@@ -75,6 +75,22 @@
   .arranque .check{display:flex;gap:.5rem;align-items:center}
   .error{color:var(--alerta);font-size:.85rem;min-height:1em}
   video{display:none}
+  html,body{max-width:100vw;overflow-x:hidden}
+  body{height:100dvh}
+  .escribir input{min-width:0}
+  @media (max-width:600px){
+    .estado{flex-wrap:wrap;font-size:.75rem;padding:.6rem;gap:.4rem}
+    .ojos{gap:14vw}
+    .ojo{width:22vw;height:32vw}
+    body.feliz .ojo{height:26vw}
+    body.atento .ojo{height:36vw;width:24vw}
+    body.sorprendido .ojo{width:28vw;height:28vw}
+    body.pensando .ojo{height:24vw}
+    .pie{padding:0 1rem 1rem}
+    .escribir{flex-wrap:wrap}
+    .escribir input{flex:1 1 100%}
+    .escribir button{flex:1}
+  }
 </style>
 </head>
 <body class="dormido">
@@ -293,7 +309,7 @@ async function prepararVista(){
       estado.mirando = ancho > 0.09 && r > 0.3 && r < 0.7;
       const cx = (b.originX + b.width/2) / video.videoWidth;
       const cy = (b.originY + b.height/2) / video.videoHeight;
-      mirarHacia((0.5 - cx) * 90, (cy - 0.45) * 50);
+      const k2 = Math.min(90, innerWidth*0.12); mirarHacia((0.5 - cx) * k2, (cy - 0.45) * k2*0.55);
     }
     const antes = estado.presente;
     estado.presente = ahora - estado.ultimaVez < 1500;
