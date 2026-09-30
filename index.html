@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="es-MX">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aureon</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --noche:#0F1B2D; --noche-2:#16263D; --oro:#F2C14E; --oro-brillo:rgba(242,193,78,.28);
+    --texto:#D9E2EC; --tenue:#7B8BA3; --alerta:#E4572E;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--noche);color:var(--texto);
+    font-family:'Sora',system-ui,sans-serif;overflow:hidden}
+  body{display:grid;grid-template-rows:auto 1fr auto;height:100vh}
+
+  /* Estado superior */
+  .estado{display:flex;gap:.6rem;justify-content:center;padding:1rem;font-size:.85rem;color:var(--tenue)}
+  .chip{display:flex;align-items:center;gap:.4rem;padding:.3rem .75rem;border-radius:999px;background:var(--noche-2)}
+  .chip i{width:8px;height:8px;border-radius:50%;background:#34435a}
+  .chip.on{color:var(--texto)} .chip.on i{background:var(--oro);box-shadow:0 0 8px var(--oro)}
+
+  /* Cara */
+  .cara{display:grid;place-items:center}
+  .ojos{display:flex;gap:clamp(40px,9vw,110px);transition:transform .35s ease-out}
+  .ojo{position:relative;width:clamp(80px,14vw,130px);height:clamp(115px,20vw,185px);
+    background:var(--oro);border-radius:999px;box-shadow:0 0 40px var(--oro-brillo);
+    transition:height .22s ease,width .22s ease,border-radius .22s ease,transform .22s ease;overflow:hidden}
+  /* párpado superior (tristeza / preocupación) */
+  .ojo::before{content:"";position:absolute;left:-20%;width:140%;height:60%;top:-70%;
+    background:var(--noche);transition:top .22s ease,transform .22s ease}
+  /* mejilla (felicidad) */
+  .ojo::after{content:"";position:absolute;left:-15%;width:130%;height:80%;bottom:-95%;
+    background:var(--noche);border-radius:50%;transition:bottom .22s ease}
+
+  body.feliz .ojo{height:clamp(95px,16vw,150px)}
+  body.feliz .ojo::after{bottom:-45%}
+  body.atento .ojo{height:clamp(125px,22vw,200px);width:clamp(88px,15vw,140px)}
+  body.sorprendido .ojo{width:clamp(110px,17vw,160px);height:clamp(110px,17vw,160px);border-radius:50%}
+  body.pensando .ojo{height:clamp(90px,15vw,140px)}
+  body.preocupado .ojo::before{top:-30%}
+  body.preocupado .ojo.izq::before{transform:rotate(-14deg)}
+  body.preocupado .ojo.der::before{transform:rotate(14deg)}
+  body.dormido .ojo{height:10px;box-shadow:none;opacity:.55}
+  body.parpadeo .ojo{height:8px}
+  body.hablando .ojos{animation:hablar .38s ease-in-out infinite alternate}
+  body.escuchando .ojo{box-shadow:0 0 70px var(--oro)}
+  @keyframes hablar{from{transform:translateY(0)}to{transform:translateY(-6px)}}
+  @media (prefers-reduced-motion:reduce){ body.hablando .ojos{animation:none} .ojos,.ojo{transition:none} }
+
+  /* Subtítulos */
+  .pie{padding:0 1.5rem 1.5rem;display:grid;gap:.8rem;justify-items:center}
+  .oido{min-height:1.4em;color:var(--tenue);font-size:.95rem;text-align:center;max-width:60ch}
+  .dice{min-height:1.6em;font-size:clamp(1rem,2.2vw,1.35rem);font-weight:300;text-align:center;max-width:52ch;line-height:1.5}
+  .pantalla{white-space:pre-wrap;font-size:.9rem;color:var(--texto);background:var(--noche-2);
+    border-radius:14px;padding:.8rem 1rem;max-width:60ch;display:none}
+  .escribir{display:flex;gap:.5rem;width:min(560px,100%)}
+  .escribir input{flex:1;background:var(--noche-2);border:1px solid #26374f;border-radius:999px;
+    color:var(--texto);padding:.65rem 1rem;font:inherit}
+  button{font:inherit;border:0;border-radius:999px;padding:.65rem 1.1rem;cursor:pointer;
+    background:var(--oro);color:var(--noche);font-weight:600}
+  button.sec{background:var(--noche-2);color:var(--texto)}
+  :focus-visible{outline:2px solid var(--oro);outline-offset:2px}
+
+  /* Arranque */
+  .arranque{position:fixed;inset:0;background:rgba(15,27,45,.96);display:grid;place-items:center;z-index:10}
+  .arranque form{width:min(440px,92vw);display:grid;gap:.9rem}
+  .arranque h1{font-weight:600;font-size:1.6rem;margin:0}
+  .arranque p{margin:0;color:var(--tenue);font-size:.9rem;line-height:1.5}
+  .arranque label{display:grid;gap:.35rem;font-size:.85rem}
+  .arranque input[type=text],.arranque input[type=password]{background:var(--noche-2);border:1px solid #26374f;
+    border-radius:10px;color:var(--texto);padding:.6rem .8rem;font:inherit}
+  .arranque .check{display:flex;gap:.5rem;align-items:center}
+  .error{color:var(--alerta);font-size:.85rem;min-height:1em}
+  video{display:none}
+</style>
+</head>
+<body class="dormido">
+
+<div class="estado" aria-live="polite">
+  <span class="chip" id="chipVeo"><i></i>Te veo</span>
+  <span class="chip" id="chipMira"><i></i>Me miras</span>
+  <span class="chip" id="chipOigo"><i></i>Escuchando</span>
+</div>
+
+<main class="cara" aria-hidden="true">
+  <div class="ojos" id="ojos"><div class="ojo izq"></div><div class="ojo der"></div></div>
+</main>
+
+<div class="pie">
+  <div class="oido" id="oido"></div>
+  <div class="dice" id="dice"></div>
+  <div class="pantalla" id="pantalla"></div>
+  <form class="escribir" id="formEscribir">
+    <input id="txt" placeholder="Escríbele a Aureon si prefieres no hablar" autocomplete="off">
+    <button type="submit">Enviar</button>
+    <button type="button" class="sec" id="btnSilencio" aria-pressed="false">Silenciar</button>
+  </form>
+</div>
+
+<video id="video" playsinline muted></video>
+
+<div class="arranque" id="arranque">
+  <form id="formArranque">
+    <h1>Aureon</h1>
+    <p>La cámara solo se procesa en este equipo para saber si estás presente. El video no se envía a ningún lado.</p>
+    <label>Dirección del cerebro
+      <input type="text" id="cfgUrl" value="https://n8n.aureon.systems/webhook/aureon-hub/cerebro">
+    </label>
+    <label>Clave del cerebro (x-hub-key)
+      <input type="password" id="cfgClave" autocomplete="off">
+    </label>
+    <label class="check"><input type="checkbox" id="cfgCamara" checked> Usar la cámara</label>
+    <label class="check"><input type="checkbox" id="cfgMirar" checked> Escucharme sin decir "Aureon" cuando lo estoy mirando</label>
+    <label class="check"><input type="checkbox" id="cfgRecordar"> Recordar la configuración en este equipo</label>
+    <div class="error" id="errArranque"></div>
+    <button type="submit">Despertar a Aureon</button>
+  </form>
+</div>
+
+<script type="module">
+import { FilesetResolver, FaceDetector } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
+
+const $ = id => document.getElementById(id);
+const CARAS = ["feliz","neutral","pensando","atento","preocupado","sorprendido","dormido"];
+const PALABRA = /\b(a[uú]re[oó]n|aurion|oreon|aureo)\b[,.\s]*/i;
+
+const cfg = { url:"", clave:"", camara:true, mirar:true };
+const estado = {
+  presente:false, mirando:false, ultimaVez:0, ausenteDesde:Date.now(),
+  hablando:false, esperando:false, silencio:false, ventanaEscucha:0,
+  ultimaLlegada:0, caraActual:"dormido", gaze:{x:0,y:0}
+};
+
+/* ---------- Cara ---------- */
+function ponerCara(c){
+  if(!CARAS.includes(c)) c = "neutral";
+  estado.caraActual = c;
+  document.body.classList.remove(...CARAS);
+  document.body.classList.add(c);
+}
+function parpadear(){
+  if(estado.caraActual !== "dormido"){
+    document.body.classList.add("parpadeo");
+    setTimeout(()=>document.body.classList.remove("parpadeo"),130);
+  }
+  setTimeout(parpadear, 2500 + Math.random()*4000);
+}
+function mirarHacia(x,y){ $("ojos").style.transform = `translate(${x}px,${y}px)`; }
+function chip(id,on){ $(id).classList.toggle("on",on); }
+
+/* ---------- Voz de salida ---------- */
+let vozEs = null;
+function elegirVoz(){
+  const voces = speechSynthesis.getVoices();
+  vozEs = voces.find(v=>/es-MX/i.test(v.lang)) || voces.find(v=>/^es/i.test(v.lang)) || null;
+}
+speechSynthesis.onvoiceschanged = elegirVoz; elegirVoz();
+
+function hablar(texto, caraFinal){
+  return new Promise(res=>{
+    if(estado.silencio || !texto){ ponerCara(caraFinal); return res(); }
+    const u = new SpeechSynthesisUtterance(texto);
+    if(vozEs) u.voice = vozEs;
+    u.lang = "es-MX"; u.rate = 1.05;
+    estado.hablando = true; detenerOido();
+    document.body.classList.add("hablando");
+    u.onend = u.onerror = ()=>{
+      estado.hablando = false;
+      document.body.classList.remove("hablando");
+      ponerCara(caraFinal);
+      setTimeout(()=>{ if(!estado.hablando) ponerCara(estado.presente ? "atento" : "neutral"); }, 4000);
+      iniciarOido(); res();
+    };
+    speechSynthesis.speak(u);
+  });
+}
+
+/* ---------- Cerebro ---------- */
+function leerRespuesta(txt){
+  const limpio = txt.replace(/```json|```/g,"").trim();
+  try { return JSON.parse(limpio); }
+  catch { return { respuesta: limpio, cara:"neutral", hablar:true, pantalla:"" }; }
+}
+async function preguntar(texto, esEvento=false){
+  if(estado.esperando) return;
+  estado.esperando = true;
+  if(!esEvento) $("oido").textContent = `“${texto}”`;
+  ponerCara("pensando");
+  const ahora = new Date();
+  const cuerpo = {
+    texto, sesion: "cuerpo-" + ahora.toISOString().slice(0,10),
+    contexto: {
+      presente: estado.presente, mirando: estado.mirando,
+      hora: ahora.toLocaleTimeString("es-MX",{hour:"2-digit",minute:"2-digit"}),
+      fecha: ahora.toLocaleDateString("es-MX",{weekday:"long",day:"numeric",month:"long"}),
+      dispositivo: "cuerpo-web", evento: esEvento
+    }
+  };
+  try{
+    const r = await fetch(cfg.url,{method:"POST",
+      headers:{"Content-Type":"application/json","x-hub-key":cfg.clave},
+      body: JSON.stringify(cuerpo)});
+    if(r.status === 403) throw new Error("La clave del cerebro no es válida. Revísala en la configuración.");
+    if(!r.ok) throw new Error(`El cerebro respondió con error ${r.status}. Revisa la ejecución en n8n.`);
+    const d = leerRespuesta(await r.text());
+    $("dice").textContent = d.respuesta || "";
+    const p = $("pantalla");
+    if(d.pantalla){ p.textContent = d.pantalla; p.style.display = "block"; } else p.style.display = "none";
+    await hablar(d.hablar === false ? "" : d.respuesta, d.cara || "neutral");
+  }catch(e){
+    ponerCara("preocupado");
+    $("dice").textContent = e.message.includes("Failed to fetch")
+      ? "No pude conectar con el cerebro. Revisa que el workflow esté publicado y que el Webhook permita CORS."
+      : e.message;
+  }finally{ estado.esperando = false; }
+}
+
+/* ---------- Oído ---------- */
+const Reconocedor = window.SpeechRecognition || window.webkitSpeechRecognition;
+let oido = null, oidoActivo = false;
+function iniciarOido(){
+  if(!Reconocedor || estado.hablando || oidoActivo) return;
+  try{ oido.start(); oidoActivo = true; chip("chipOigo",true); }catch{}
+}
+function detenerOido(){
+  if(!oido) return;
+  try{ oido.abort(); }catch{}
+  oidoActivo = false; chip("chipOigo",false);
+}
+function prepararOido(){
+  if(!Reconocedor){ $("oido").textContent = "Este navegador no puede escucharte. Usa Chrome o escribe abajo."; return; }
+  oido = new Reconocedor();
+  oido.lang = "es-MX"; oido.continuous = true; oido.interimResults = true;
+  oido.onresult = ev=>{
+    let final = "", parcial = "";
+    for(let i=ev.resultIndex;i<ev.results.length;i++){
+      const t = ev.results[i][0].transcript;
+      ev.results[i].isFinal ? final += t : parcial += t;
+    }
+    const enVentana = Date.now() < estado.ventanaEscucha;
+    const directo = cfg.mirar && estado.presente && estado.mirando;
+    if(parcial && (PALABRA.test(parcial) || enVentana || directo)){
+      document.body.classList.add("escuchando");
+      $("oido").textContent = parcial;
+    }
+    if(!final) return;
+    document.body.classList.remove("escuchando");
+    final = final.trim();
+    if(PALABRA.test(final)){
+      const resto = final.replace(PALABRA,"").trim();
+      if(resto.length < 2){
+        estado.ventanaEscucha = Date.now() + 7000;
+        ponerCara("atento"); $("oido").textContent = "Te escucho…";
+        return;
+      }
+      return preguntar(resto);
+    }
+    if(enVentana || (directo && final.split(/\s+/).length >= 3)){
+      estado.ventanaEscucha = 0;
+      preguntar(final);
+    }
+  };
+  oido.onend = ()=>{ oidoActivo = false; chip("chipOigo",false); if(!estado.hablando) setTimeout(iniciarOido,300); };
+  oido.onerror = e=>{
+    if(e.error === "not-allowed") $("oido").textContent = "Chrome no tiene permiso del micrófono.";
+  };
+  iniciarOido();
+}
+
+/* ---------- Vista ---------- */
+async function prepararVista(){
+  const video = $("video");
+  const flujo = await navigator.mediaDevices.getUserMedia({video:{width:640,height:480}, audio:false});
+  video.srcObject = flujo; await video.play();
+  const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm");
+  const detector = await FaceDetector.createFromOptions(vision,{
+    baseOptions:{ modelAssetPath:"https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite" },
+    runningMode:"VIDEO", minDetectionConfidence:0.55
+  });
+  setInterval(()=>{
+    if(video.readyState < 2) return;
+    const res = detector.detectForVideo(video, performance.now());
+    const ahora = Date.now();
+    const cara = res.detections?.[0];
+    if(cara){
+      estado.ultimaVez = ahora;
+      const k = cara.keypoints, b = cara.boundingBox;
+      const ancho = b.width / video.videoWidth;
+      const r = (k[2].x - k[0].x) / ((k[1].x - k[0].x) || 1e-6);
+      estado.mirando = ancho > 0.09 && r > 0.3 && r < 0.7;
+      const cx = (b.originX + b.width/2) / video.videoWidth;
+      const cy = (b.originY + b.height/2) / video.videoHeight;
+      mirarHacia((0.5 - cx) * 90, (cy - 0.45) * 50);
+    }
+    const antes = estado.presente;
+    estado.presente = ahora - estado.ultimaVez < 1500;
+    if(!estado.presente) estado.mirando = false;
+    chip("chipVeo",estado.presente); chip("chipMira",estado.mirando);
+
+    if(estado.presente && !antes){
+      const ausente = ahora - estado.ausenteDesde;
+      if(estado.caraActual === "dormido") ponerCara("atento");
+      if(ausente > 3*60*1000 && ahora - estado.ultimaLlegada > 10*60*1000){
+        estado.ultimaLlegada = ahora;
+        preguntar("[Evento: Alexis acaba de llegar al escritorio después de un rato fuera. Salúdalo en una sola frase corta y natural; no le hagas preguntas.]", true);
+      }
+    }
+    if(!estado.presente && antes) estado.ausenteDesde = ahora;
+    if(!estado.presente && ahora - estado.ultimaVez > 60000 && !estado.hablando && !estado.esperando
+       && estado.caraActual !== "dormido"){
+      ponerCara("dormido"); mirarHacia(0,0);
+    }
+  }, 200);
+}
+
+/* ---------- Arranque ---------- */
+try{
+  const g = JSON.parse(localStorage.getItem("aureon-cfg") || "null");
+  if(g){ $("cfgUrl").value = g.url; $("cfgClave").value = g.clave; $("cfgCamara").checked = g.camara;
+         $("cfgMirar").checked = g.mirar; $("cfgRecordar").checked = true; }
+}catch{}
+
+$("formArranque").addEventListener("submit", async ev=>{
+  ev.preventDefault();
+  cfg.url = $("cfgUrl").value.trim(); cfg.clave = $("cfgClave").value;
+  cfg.camara = $("cfgCamara").checked; cfg.mirar = $("cfgMirar").checked;
+  if(!cfg.url || !cfg.clave){ $("errArranque").textContent = "Escribe la dirección y la clave del cerebro."; return; }
+  try{
+    if($("cfgRecordar").checked) localStorage.setItem("aureon-cfg", JSON.stringify(cfg));
+    else localStorage.removeItem("aureon-cfg");
+  }catch{}
+  $("arranque").style.display = "none";
+  ponerCara("neutral"); parpadear(); prepararOido();
+  if(cfg.camara){
+    try{ await prepararVista(); }
+    catch(e){ $("oido").textContent = "No pude usar la cámara. Sigo escuchándote."; console.error(e); }
+  } else { estado.presente = true; }
+});
+
+$("formEscribir").addEventListener("submit", ev=>{
+  ev.preventDefault();
+  const t = $("txt").value.trim(); if(!t) return;
+  $("txt").value = ""; preguntar(t);
+});
+$("btnSilencio").addEventListener("click", ()=>{
+  estado.silencio = !estado.silencio;
+  $("btnSilencio").setAttribute("aria-pressed", estado.silencio);
+  $("btnSilencio").textContent = estado.silencio ? "Activar voz" : "Silenciar";
+  if(estado.silencio) speechSynthesis.cancel();
+});
+</script>
+</body>
+</html>
