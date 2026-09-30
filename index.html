@@ -98,9 +98,10 @@
 <div class="estado" aria-live="polite">
   <span class="chip" id="chipVeo"><i></i>Te veo</span>
   <span class="chip" id="chipMira"><i></i>Me miras</span>
-  <span class="chip" id="chipOigo"><i></i>Escuchando</span><span class="chip">v8</span>
+  <span class="chip" id="chipOigo"><i></i>Escuchando</span><span class="chip">v9</span>
 </div>
 
+<div id="medidor" style="text-align:center;font-size:.75rem;color:#7B8BA3;min-height:1.2em"></div>
 <main class="cara" aria-hidden="true">
   <div class="ojos" id="ojos"><div class="ojo izq"></div><div class="ojo der"></div></div>
 </main>
@@ -286,13 +287,14 @@ async function prepararOido(){
     let s=0; for(const v of buf) s+=v*v;
     const rms = Math.sqrt(s/buf.length), ahora = Date.now();
     piso = hablandoUsuario ? piso*0.998 + rms*0.002 : piso*0.98 + rms*0.02;
-    const umbral = Math.max(piso*3.5, 0.02);
+    const umbral = Math.max(piso*2.5, 0.012);
     const atento = !cfg.camara || (ahora - estado.ultimaVez < 10000);
     if(oidoPausado || estado.hablando || estado.esperando || !atento) return;
     analizador.getFloatFrequencyData(espectro);
     let total = 0, banda = 0;
     for(let i=1;i<espectro.length;i++){ const p = Math.pow(10, espectro[i]/10); total += p; if(i>=b0 && i<=b1) banda += p; }
-    const esVoz = total > 0 && banda/total > 0.65;
+    const esVoz = total > 0 && banda/total > 0.5;
+    $("medidor").textContent = "vol " + rms.toFixed(3) + " | umbral " + umbral.toFixed(3) + " | voz " + (total ? (banda/total).toFixed(2) : "0") + (esVoz ? " | parece voz" : "");
     if(rms > umbral && esVoz){
       ultimoSonido = ahora;
       if(!hablandoUsuario) empezarGrabacion();
