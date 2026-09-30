@@ -98,7 +98,7 @@
 <div class="estado" aria-live="polite">
   <span class="chip" id="chipVeo"><i></i>Te veo</span>
   <span class="chip" id="chipMira"><i></i>Me miras</span>
-  <span class="chip" id="chipOigo"><i></i>Escuchando</span><span class="chip">v7</span>
+  <span class="chip" id="chipOigo"><i></i>Escuchando</span><span class="chip">v8</span>
 </div>
 
 <main class="cara" aria-hidden="true">
@@ -277,16 +277,23 @@ async function prepararOido(){
   const fuente = ctx.createMediaStreamSource(micStream);
   analizador = ctx.createAnalyser(); analizador.fftSize = 1024; fuente.connect(analizador);
   const buf = new Float32Array(analizador.fftSize);
+  const espectro = new Float32Array(analizador.frequencyBinCount);
+  const binHz = ctx.sampleRate / analizador.fftSize;
+  const b0 = Math.floor(120/binHz), b1 = Math.ceil(4000/binHz);
   iniciarOido();
   setInterval(()=>{
     analizador.getFloatTimeDomainData(buf);
     let s=0; for(const v of buf) s+=v*v;
     const rms = Math.sqrt(s/buf.length), ahora = Date.now();
-    if(!hablandoUsuario) piso = piso*0.98 + rms*0.02;
-    const umbral = Math.max(piso*3, 0.015);
+    piso = hablandoUsuario ? piso*0.998 + rms*0.002 : piso*0.98 + rms*0.02;
+    const umbral = Math.max(piso*3.5, 0.02);
     const atento = !cfg.camara || (ahora - estado.ultimaVez < 10000);
     if(oidoPausado || estado.hablando || estado.esperando || !atento) return;
-    if(rms > umbral){
+    analizador.getFloatFrequencyData(espectro);
+    let total = 0, banda = 0;
+    for(let i=1;i<espectro.length;i++){ const p = Math.pow(10, espectro[i]/10); total += p; if(i>=b0 && i<=b1) banda += p; }
+    const esVoz = total > 0 && banda/total > 0.65;
+    if(rms > umbral && esVoz){
       ultimoSonido = ahora;
       if(!hablandoUsuario) empezarGrabacion();
       if(estado.mirando) miroDurante = true;
