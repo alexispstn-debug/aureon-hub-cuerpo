@@ -98,7 +98,7 @@
 <div class="estado" aria-live="polite">
   <span class="chip" id="chipVeo"><i></i>Te veo</span>
   <span class="chip" id="chipMira"><i></i>Me miras</span>
-  <span class="chip" id="chipOigo"><i></i>Escuchando</span><span class="chip">v5</span>
+  <span class="chip" id="chipOigo"><i></i>Escuchando</span><span class="chip">v6</span>
 </div>
 
 <main class="cara" aria-hidden="true">
@@ -173,27 +173,46 @@ function elegirVoz(){
   const voces = speechSynthesis.getVoices();
   vozEs = voces.find(v=>/es-MX/i.test(v.lang)) || voces.find(v=>/^es/i.test(v.lang)) || null;
 }
-speechSynthesis.onvoiceschanged = elegirVoz; elegirVoz();
+if(window.speechSynthesis){ speechSynthesis.onvoiceschanged = elegirVoz; elegirVoz(); }
+const reproductor = new Audio();
 
 function hablar(texto, caraFinal){
-  return new Promise(res=>{
+  return new Promise(async res=>{
     if(estado.silencio || !texto){ ponerCara(caraFinal); return res(); }
-    const u = new SpeechSynthesisUtterance(texto);
-    if(vozEs) u.voice = vozEs;
-    u.lang = "es-MX"; u.rate = 1.05;
     estado.hablando = true; detenerOido();
     document.body.classList.add("hablando");
-    u.onend = u.onerror = ()=>{
+    let listo = false, reloj = null;
+    const terminar = ()=>{
+      if(listo) return; listo = true; clearTimeout(reloj);
       estado.hablando = false;
       document.body.classList.remove("hablando");
       ponerCara(caraFinal);
       setTimeout(()=>{ if(!estado.hablando) ponerCara(estado.presente ? "atento" : "neutral"); }, 4000);
       iniciarOido(); res();
     };
-    speechSynthesis.speak(u);
+    reloj = setTimeout(terminar, 10000);
+    try{
+      const r = await fetch(cfg.url.replace(/cerebro\/?$/, "voz"), {method:"POST",
+        headers:{"Content-Type":"application/json","x-hub-key":cfg.clave}, body: JSON.stringify({texto})});
+      if(!r.ok) throw new Error("la voz respondió " + r.status);
+      const url = URL.createObjectURL(await r.blob());
+      reproductor.src = url;
+      reproductor.onended = ()=>{ URL.revokeObjectURL(url); terminar(); };
+      reproductor.onerror = terminar;
+      await reproductor.play();
+      clearTimeout(reloj);
+      const seg = isFinite(reproductor.duration) ? reproductor.duration : texto.length * 0.09;
+      reloj = setTimeout(terminar, seg * 1000 + 1500);
+    }catch(e){
+      console.warn("Voz de n8n falló, uso la del navegador:", e);
+      if(window.speechSynthesis && vozEs){
+        const u = new SpeechSynthesisUtterance(texto);
+        u.voice = vozEs; u.lang = "es-MX"; u.rate = 1.05;
+        u.onend = u.onerror = terminar; speechSynthesis.speak(u);
+      } else terminar();
+    }
   });
 }
-
 /* ---------- Cerebro ---------- */
 function leerRespuesta(txt){
   const limpio = txt.replace(/```json|```/g,"").trim();
@@ -391,7 +410,7 @@ $("btnSilencio").addEventListener("click", ()=>{
   estado.silencio = !estado.silencio;
   $("btnSilencio").setAttribute("aria-pressed", estado.silencio);
   $("btnSilencio").textContent = estado.silencio ? "Activar voz" : "Silenciar";
-  if(estado.silencio) speechSynthesis.cancel();
+  if(estado.silencio){ speechSynthesis.cancel(); reproductor.pause(); }
 });
 </script>
 </body>
