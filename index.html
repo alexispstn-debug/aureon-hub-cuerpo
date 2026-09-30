@@ -257,7 +257,8 @@ function prepararOido(){
       ev.results[i].isFinal ? final += t : parcial += t;
     }
     const enVentana = Date.now() < estado.ventanaEscucha;
-    const directo = cfg.mirar && estado.presente && estado.mirando;
+    const directo = cfg.mirar && estado.presente && (Date.now() - (estado.ultimaMirada || 0) < 3000);
+    if(parcial){ $("oido").textContent = parcial; }
     if(parcial && (PALABRA.test(parcial) || enVentana || directo)){
       document.body.classList.add("escuchando");
       $("oido").textContent = parcial;
@@ -274,7 +275,7 @@ function prepararOido(){
       }
       return preguntar(resto);
     }
-    if(enVentana || (directo && final.split(/\s+/).length >= 3)){
+    if(enVentana || (directo && final.split(/\s+/).length >= 2)){
       estado.ventanaEscucha = 0;
       preguntar(final);
     }
@@ -306,7 +307,7 @@ async function prepararVista(){
       const k = cara.keypoints, b = cara.boundingBox;
       const ancho = b.width / video.videoWidth;
       const r = (k[2].x - k[0].x) / ((k[1].x - k[0].x) || 1e-6);
-      estado.mirando = ancho > 0.09 && r > 0.3 && r < 0.7;
+      estado.mirando = ancho > 0.06 && r > 0.25 && r < 0.75; if(estado.mirando) estado.ultimaMirada = ahora;
       const cx = (b.originX + b.width/2) / video.videoWidth;
       const cy = (b.originY + b.height/2) / video.videoHeight;
       const k2 = Math.min(90, innerWidth*0.12); mirarHacia((0.5 - cx) * k2, (cy - 0.45) * k2*0.55);
