@@ -98,7 +98,7 @@
 <div class="estado" aria-live="polite">
   <span class="chip" id="chipVeo"><i></i>Te veo</span>
   <span class="chip" id="chipMira"><i></i>Me miras</span>
-  <span class="chip" id="chipOigo"><i></i>Escuchando</span>
+  <span class="chip" id="chipOigo"><i></i>Escuchando</span><span class="chip">v5</span>
 </div>
 
 <main class="cara" aria-hidden="true">
@@ -235,58 +235,83 @@ async function preguntar(texto, esEvento=false){
 }
 
 /* ---------- Oído ---------- */
-const Reconocedor = window.SpeechRecognition || window.webkitSpeechRecognition;
-let oido = null, oidoActivo = false;
-function iniciarOido(){
-  if(!Reconocedor || estado.hablando || oidoActivo) return;
-  try{ oido.start(); oidoActivo = true; chip("chipOigo",true); }catch{}
-}
+let micStream=null, analizador=null, grabador=null, trozos=[], oidoPausado=false;
+let hablandoUsuario=false, inicioVoz=0, ultimoSonido=0, piso=0.01, miroDurante=false;
+const RUIDO_WHISPER = /^(gracias( por ver)?|subt[ií]tulos|m[uú]sica)[.!\s]*$/i;
+
+function iniciarOido(){ oidoPausado=false; chip("chipOigo",true); }
 function detenerOido(){
-  if(!oido) return;
-  try{ oido.abort(); }catch{}
-  oidoActivo = false; chip("chipOigo",false);
+  oidoPausado=true; chip("chipOigo",false);
+  if(grabador && grabador.state==="recording"){ grabador.onstop=null; grabador.stop(); }
+  hablandoUsuario=false; document.body.classList.remove("escuchando");
 }
-function prepararOido(){
-  if(!Reconocedor){ $("oido").textContent = "Este navegador no puede escucharte. Usa Chrome o escribe abajo."; return; }
-  oido = new Reconocedor();
-  oido.lang = "es-MX"; oido.continuous = true; oido.interimResults = true;
-  oido.onresult = ev=>{
-    let final = "", parcial = "";
-    for(let i=ev.resultIndex;i<ev.results.length;i++){
-      const t = ev.results[i][0].transcript;
-      ev.results[i].isFinal ? final += t : parcial += t;
-    }
-    const enVentana = Date.now() < estado.ventanaEscucha;
-    const directo = cfg.mirar && estado.presente && (Date.now() - (estado.ultimaMirada || 0) < 3000);
-    if(parcial){ $("oido").textContent = parcial; }
-    if(parcial && (PALABRA.test(parcial) || enVentana || directo)){
-      document.body.classList.add("escuchando");
-      $("oido").textContent = parcial;
-    }
-    if(!final) return;
-    document.body.classList.remove("escuchando");
-    final = final.trim();
-    if(PALABRA.test(final)){
-      const resto = final.replace(PALABRA,"").trim();
-      if(resto.length < 2){
-        estado.ventanaEscucha = Date.now() + 7000;
-        ponerCara("atento"); $("oido").textContent = "Te escucho…";
-        return;
-      }
+function tipoAudio(){
+  for(const t of ["audio/webm;codecs=opus","audio/webm","audio/mp4","audio/ogg"])
+    if(window.MediaRecorder && MediaRecorder.isTypeSupported(t)) return t;
+  return "";
+}
+async function prepararOido(){
+  try{
+    micStream = await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}});
+  }catch(e){ $("oido").textContent = "No tengo permiso del micrófono."; return; }
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  const fuente = ctx.createMediaStreamSource(micStream);
+  analizador = ctx.createAnalyser(); analizador.fftSize = 1024; fuente.connect(analizador);
+  const buf = new Float32Array(analizador.fftSize);
+  iniciarOido();
+  setInterval(()=>{
+    analizador.getFloatTimeDomainData(buf);
+    let s=0; for(const v of buf) s+=v*v;
+    const rms = Math.sqrt(s/buf.length), ahora = Date.now();
+    if(!hablandoUsuario) piso = piso*0.98 + rms*0.02;
+    const umbral = Math.max(piso*3, 0.015);
+    const atento = !cfg.camara || (ahora - estado.ultimaVez < 10000);
+    if(oidoPausado || estado.hablando || estado.esperando || !atento) return;
+    if(rms > umbral){
+      ultimoSonido = ahora;
+      if(!hablandoUsuario) empezarGrabacion();
+      if(estado.mirando) miroDurante = true;
+    } else if(hablandoUsuario && ahora - ultimoSonido > 900){ terminarGrabacion(); }
+    if(hablandoUsuario && ahora - inicioVoz > 15000) terminarGrabacion();
+  }, 50);
+}
+function empezarGrabacion(){
+  hablandoUsuario = true; inicioVoz = Date.now();
+  miroDurante = estado.mirando || (Date.now() - (estado.ultimaMirada||0) < 3000);
+  trozos = []; const t = tipoAudio();
+  grabador = new MediaRecorder(micStream, t ? {mimeType:t} : undefined);
+  grabador.ondataavailable = e=>{ if(e.data.size) trozos.push(e.data); };
+  grabador.onstop = ()=>procesarAudio(grabador.mimeType);
+  grabador.start();
+  document.body.classList.add("escuchando");
+}
+function terminarGrabacion(){
+  hablandoUsuario = false; document.body.classList.remove("escuchando");
+  if(grabador && grabador.state === "recording") grabador.stop();
+}
+async function procesarAudio(tipo){
+  if(Date.now() - inicioVoz < 700 || !trozos.length) return;
+  const blob = new Blob(trozos, {type:tipo});
+  const ext = tipo.includes("mp4") ? "m4a" : tipo.includes("ogg") ? "ogg" : "webm";
+  const fd = new FormData(); fd.append("audio", blob, "voz." + ext);
+  $("oido").textContent = "…";
+  try{
+    const r = await fetch(cfg.url.replace(/cerebro\/?$/, "oido"), {method:"POST", headers:{"x-hub-key":cfg.clave}, body:fd});
+    if(!r.ok) throw new Error("el oído respondió " + r.status);
+    const d = await r.json();
+    const texto = (d.texto || d.text || "").trim();
+    if(!texto || RUIDO_WHISPER.test(texto)){ $("oido").textContent = ""; return; }
+    $("oido").textContent = texto;
+    if(PALABRA.test(texto)){
+      const resto = texto.replace(PALABRA, "").trim();
+      if(resto.length < 2){ estado.ventanaEscucha = Date.now() + 7000; ponerCara("atento"); return; }
       return preguntar(resto);
     }
-    if(enVentana || (directo && final.split(/\s+/).length >= 2)){
-      estado.ventanaEscucha = 0;
-      preguntar(final);
+    if((cfg.mirar && miroDurante) || Date.now() < estado.ventanaEscucha){
+      estado.ventanaEscucha = 0; return preguntar(texto);
     }
-  };
-  oido.onend = ()=>{ oidoActivo = false; chip("chipOigo",false); if(!estado.hablando) setTimeout(iniciarOido,300); };
-  oido.onerror = e=>{
-    if(e.error === "not-allowed") $("oido").textContent = "Chrome no tiene permiso del micrófono.";
-  };
-  iniciarOido();
+  }catch(e){ $("oido").textContent = "No pude transcribir: " + e.message; }
 }
-
 /* ---------- Vista ---------- */
 async function prepararVista(){
   const video = $("video");
